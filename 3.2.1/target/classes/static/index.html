@@ -1,0 +1,98 @@
+﻿
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CI/CD Automation Pipeline Dashboard | Exp 3.2.1 & 3.2.2</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
+    .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #334155; }
+    h1 { color: #818cf8; margin-bottom: 0.5rem; }
+    h2 { color: #38bdf8; margin-bottom: 1rem; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 13px; }
+    .badge-green { background: #065f46; color: #34d399; }
+    .badge-blue { background: #1e3a8a; color: #60a5fa; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .btn { background: #6366f1; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 8px; }
+    .btn-danger { background: #ef4444; }
+    .btn-success { background: #10b981; }
+    pre { background: #090d16; padding: 1rem; border-radius: 8px; color: #38bdf8; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: left; }
+    input { background: #0f172a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 6px; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Continuous Integration & Deployment (CI/CD) Dashboard</h1>
+  <p style="color: #94a3b8; margin-bottom: 2rem;">Experiments 3.2.1 (CI Pipeline) & 3.2.2 (CD Pipeline with Actuator & Rollback)</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Experiment 3.2.1: CI Pipeline & API Sandbox</h2>
+      <p><span class="badge badge-green">Unit Tests: 24/24 Passed</span> <span class="badge badge-blue">MockMvc: 11/11 Passed</span> <span class="badge badge-green">Pact: 4/4 Verified</span></p>
+      <h3 style="margin-top: 1.5rem; font-size: 1rem;">Products in Database</h3>
+      <div style="margin: 1rem 0;">
+        <input type="text" id="name" placeholder="Name" value="Gaming Laptop">
+        <input type="text" id="cat" placeholder="Category" value="Electronics">
+        <input type="number" id="price" placeholder="Price" value="999.99">
+        <button class="btn" onclick="addProduct()">Add Product</button>
+      </div>
+      <table id="prodTable">
+        <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Experiment 3.2.2: CD Pipeline & Health Probes</h2>
+      <p>Health Status: <span id="healthBadge" class="badge badge-green">UP (Healthy)</span></p>
+      <div style="margin: 1.5rem 0;">
+        <button class="btn" onclick="checkSmoke()">Run Smoke Test</button>
+        <button class="btn btn-danger" onclick="simFail()">Simulate Failure</button>
+        <button class="btn btn-success" onclick="recover()">Recover</button>
+      </div>
+      <h3 style="font-size: 1rem;">Deployment & Probe Log:</h3>
+      <pre id="log">Ready.</pre>
+    </div>
+  </div>
+
+  <script>
+    async function loadProds() {
+      const res = await fetch("/api/products");
+      const list = await res.json();
+      const tb = document.querySelector("#prodTable tbody");
+      tb.innerHTML = list.map(p => `<tr><td>#${p.id}</td><td>${p.name}</td><td>${p.category}</td><td>$${p.price}</td></tr>`).join("");
+    }
+    async function addProduct() {
+      const name = document.getElementById("name").value;
+      const category = document.getElementById("cat").value;
+      const price = parseFloat(document.getElementById("price").value);
+      await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, category, price, stock: 10, description: "Demo" })
+      });
+      loadProds();
+    }
+    async function checkSmoke() {
+      const res = await fetch("/api/deployments/smoke-test");
+      const data = await res.json();
+      document.getElementById("log").innerText = "Smoke Test: " + JSON.stringify(data, null, 2);
+    }
+    async function simFail() {
+      await fetch("/api/deployments/simulate-failure", { method: "POST" });
+      document.getElementById("healthBadge").className = "badge btn-danger";
+      document.getElementById("healthBadge").innerText = "DOWN (Degraded)";
+      document.getElementById("log").innerText = "ALERT: Health degraded to DOWN! Smoke test returning 503 -> Triggering scripts/rollback.sh";
+    }
+    async function recover() {
+      await fetch("/api/deployments/recover", { method: "POST" });
+      document.getElementById("healthBadge").className = "badge badge-green";
+      document.getElementById("healthBadge").innerText = "UP (Healthy)";
+      document.getElementById("log").innerText = "Service recovered. Traffic restored to normal.";
+    }
+    loadProds();
+  </script>
+</body>
+</html>
+

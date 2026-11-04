@@ -1,0 +1,177 @@
+name: Continuous Integration (CI) Pipeline - Experiment 3.2.1
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - '3.2.1/**'
+      - '.github/workflows/ci-pipeline.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - '3.2.1/**'
+
+jobs:
+  # =====================================================================
+  # JOB 1: Code Quality, Lint & Build
+  # =====================================================================
+  build:
+    name: 🔨 Build & Compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Grant Execute Permission for Maven Wrapper
+        run: chmod +x 3.2.1/mvnw || true
+
+      - name: Compile Source Code
+        run: |
+          cd 3.2.1
+          ./mvnw clean compile -DskipTests
+
+  # =====================================================================
+  # JOB 2: Automated Unit Testing (JUnit 5 + Mockito)
+  # =====================================================================
+  unit-tests:
+    name: 🧪 Unit Tests (JUnit 5)
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Unit Tests
+        run: |
+          cd 3.2.1
+          ./mvnw test -Dtest=*UnitTest
+
+      - name: Publish Unit Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-reports
+          path: 3.2.1/target/surefire-reports/
+
+  # =====================================================================
+  # JOB 3: Integration Testing (MockMvc & Testcontainers)
+  # =====================================================================
+  integration-tests:
+    name: 🔗 Integration Tests (MockMvc & Testcontainers)
+    needs: unit-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Docker Buildx (for Testcontainers)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run MockMvc & Testcontainers Tests
+        run: |
+          cd 3.2.1
+          ./mvnw test -Dtest=*IntegrationTest,*TestcontainersTest
+
+      - name: Publish Integration Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-reports
+          path: 3.2.1/target/surefire-reports/
+
+  # =====================================================================
+  # JOB 4: Contract Testing (Pact Consumer & Provider Verification)
+  # =====================================================================
+  contract-tests:
+    name: 📜 Contract Tests (Pact)
+    needs: unit-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: 1. Generate Consumer Pact Contract
+        run: |
+          cd 3.2.1
+          ./mvnw test -Dtest=ProductConsumerContractTest
+
+      - name: Archive Generated Pacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pact-contracts
+          path: 3.2.1/target/pacts/
+
+      - name: 2. Verify Provider against Generated Pact Contract
+        run: |
+          cd 3.2.1
+          ./mvnw test -Dtest=ProductProviderContractTest
+
+  # =====================================================================
+  # JOB 5: Package & Pipeline Summary
+  # =====================================================================
+  package-and-verify:
+    name: 📦 Package & CI Gate Validation
+    needs: [integration-tests, contract-tests]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build Final JAR Artifact
+        run: |
+          cd 3.2.1
+          ./mvnw package -DskipTests
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-application-jar
+          path: 3.2.1/target/*.jar
+
+      - name: CI Status Badge Summary
+        run: |
+          echo "=========================================================="
+          echo " CI PIPELINE COMPLETED SUCCESSFULLY"
+          echo " All Gates Passed: Unit, Integration, Contract, Packaging"
+          echo "=========================================================="
+

@@ -1,0 +1,8 @@
+com\experiment\ci\repository\ProductRepository.class
+com\experiment\ci\model\Product$ProductBuilder.class
+com\experiment\ci\model\Product.class
+com\experiment\ci\health\DeploymentHealthIndicator.class
+com\experiment\ci\CiPipelineDemoApplication.class
+com\experiment\ci\service\ProductService.class
+com\experiment\ci\controller\DeploymentController.class
+com\experiment\ci\controller\ProductController.class

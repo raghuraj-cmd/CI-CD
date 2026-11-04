@@ -1,0 +1,9 @@
+com\experiment\ci\integration\ProductControllerIntegrationTest.class
+com\experiment\ci\unit\ProductServiceUnitTest.class
+com\experiment\ci\unit\ProductServiceUnitTest$CrudTests.class
+com\experiment\ci\container\KafkaTestcontainersTest.class
+com\experiment\ci\contract\ProductConsumerContractTest.class
+com\experiment\ci\unit\ProductServiceUnitTest$QueryTests.class
+com\experiment\ci\container\PostgresTestcontainersTest.class
+com\experiment\ci\contract\ProductProviderContractTest.class
+com\experiment\ci\unit\ProductServiceUnitTest$BusinessLogicTests.class

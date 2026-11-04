@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. PostgreSQL Database Service
+  # ----------------------------------------------------------------------------
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: cd-postgres-db
+    environment:
+      POSTGRES_DB: cddb
+      POSTGRES_USER: cd_user
+      POSTGRES_PASSWORD: cd_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cd_user -d cddb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cd-network
+
+  # ----------------------------------------------------------------------------
+  # 2. Production Stable Application Container (v1.0.0)
+  # ----------------------------------------------------------------------------
+  app-stable:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cd-pipeline-demo:1.0.0
+    container_name: cd-service-stable
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_DEPLOYMENT_TYPE: STABLE
+      PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/cddb
+      SPRING_DATASOURCE_USERNAME: cd_user
+      SPRING_DATASOURCE_PASSWORD: cd_password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    restart: on-failure
+    networks:
+      - cd-network
+
+  # ----------------------------------------------------------------------------
+  # 3. Canary Release Application Container (v2.0.0-canary)
+  # ----------------------------------------------------------------------------
+  app-canary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cd-pipeline-demo:2.0.0-canary
+    container_name: cd-service-canary
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    environment:
+      APP_ENV: canary
+      APP_DEPLOYMENT_TYPE: CANARY
+      PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/cddb
+      SPRING_DATASOURCE_USERNAME: cd_user
+      SPRING_DATASOURCE_PASSWORD: cd_password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    restart: on-failure
+    networks:
+      - cd-network
+
+  # ----------------------------------------------------------------------------
+  # 4. Canary Reverse Proxy Router (Nginx)
+  # Routes 90% traffic to app-stable and 10% to app-canary;
+  # routes header 'X-Canary: always' 100% to app-canary.
+  # ----------------------------------------------------------------------------
+  canary-router:
+    image: nginx:alpine
+    container_name: cd-canary-router
+    depends_on:
+      app-stable:
+        condition: service_started
+      app-canary:
+        condition: service_started
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    restart: always
+    networks:
+      - cd-network
+
+volumes:
+  postgres-data:
+
+networks:
+  cd-network:
+    driver: bridge

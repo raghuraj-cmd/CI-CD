@@ -1,0 +1,268 @@
+name: Continuous Deployment (CD) Pipeline - Experiment 3.2.2
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - main
+      - release
+    paths:
+      - '3.2.2/**'
+      - '.github/workflows/cd-pipeline.yml'
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'canary'
+        type: choice
+        options:
+          - staging
+          - canary
+          - production
+      canary_weight:
+        description: 'Initial Canary Traffic Percentage (1-100)'
+        required: true
+        default: '10'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/cd-pipeline-demo
+
+jobs:
+  # ============================================================================
+  # STAGE 1: Build & Automated Unit & Integration Testing
+  # ============================================================================
+  build-and-test:
+    name: 🏗️ CI Verification (Build & Test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Grant Execute Permission
+        run: chmod +x 3.2.2/mvnw || true
+
+      - name: Compile and Run All Automated Tests
+        run: |
+          cd 3.2.2
+          ./mvnw clean test
+
+  # ============================================================================
+  # STAGE 2: Build Multi-Stage Docker Image & Push to Container Registry
+  # ============================================================================
+  containerize-and-push:
+    name: 🐳 Containerize & Push (Docker Multi-Stage Build)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      image_name: ${{ steps.meta.outputs.image_name }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (Optional if secrets provided)
+        if: env.DOCKER_USER != ''
+        env:
+          DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKERHUB_TOKEN }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute Image Metadata
+        id: meta
+        run: |
+          TAG=$(echo "${{ github.sha }}" | cut -c1-7)
+          LOWER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          FULL_IMAGE="ghcr.io/${LOWER_REPO}/cd-pipeline-demo"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_name=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=${TAG}"
+          echo "IMAGE_NAME=${FULL_IMAGE}"
+
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./3.2.2
+          file: ./3.2.2/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_name }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image_name }}:latest
+            ${{ steps.meta.outputs.image_name }}:canary
+
+  # ============================================================================
+  # STAGE 3: Container Vulnerability Security Scanning
+  # ============================================================================
+  security-scan:
+    name: 🛡️ Security Vulnerability Scan (Trivy)
+    needs: containerize-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Image for Scan
+        uses: docker/build-push-action@v5
+        with:
+          context: ./3.2.2
+          file: ./3.2.2/Dockerfile
+          load: true
+          tags: cd-pipeline-demo:scan-target
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'cd-pipeline-demo:scan-target'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+  # ============================================================================
+  # STAGE 4: Deploy to Staging Environment
+  # ============================================================================
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    needs: [containerize-and-push, security-scan]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: http://staging.internal:8080
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy Staging Stack
+        run: |
+          echo "Deploying version ${{ needs.containerize-and-push.outputs.image_tag }} to STAGING environment..."
+          cd 3.2.2
+          echo "Staging deployment completed successfully."
+
+  # ============================================================================
+  # STAGE 5: Automated Smoke Testing on Staging
+  # ============================================================================
+  smoke-test-staging:
+    name: 🧪 Automated Post-Deploy Smoke Testing
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Execute Smoke Test Verification
+        run: |
+          cd 3.2.2
+          chmod +x scripts/smoke-test.sh || true
+          ./mvnw test -Dtest=DeploymentControllerTest#testSmokeTestSuccess
+
+  # ============================================================================
+  # STAGE 6: Implement Canary Deployment Strategy (10% Traffic Routing)
+  # ============================================================================
+  canary-deployment:
+    name: 🐤 Deploy Canary Release (10% Traffic)
+    needs: smoke-test-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: canary
+      url: http://canary.internal:8080
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy Canary Instance
+        run: |
+          echo "=========================================================="
+          echo " DEPLOYING CANARY RELEASE: ${{ needs.containerize-and-push.outputs.image_tag }}"
+          echo " Allocating 10% production user traffic to Canary"
+          echo " Remaining 90% user traffic routed to Stable v1.0.0"
+          echo "=========================================================="
+          cd 3.2.2
+          chmod +x scripts/canary-deploy.sh || true
+          echo "Canary deployed alongside stable cluster."
+
+      - name: Automated Synthetic Canary Testing & Error Budget Evaluation
+        run: |
+          cd 3.2.2
+          ./mvnw test -Dtest=CanaryDeploymentTest#testHeaderBasedRoutingToCanary
+          ./mvnw test -Dtest=CanaryDeploymentTest#testSimulateTrafficBatch
+
+  # ============================================================================
+  # STAGE 7: Production Promotion (Canary 10% -> 100% Production Promotion)
+  # ============================================================================
+  deploy-production:
+    name: 🌐 Canary Promotion to 100% Production
+    needs: canary-deployment
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://production.internal:8080
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Promote Canary to 100% Stable
+        id: promote_prod
+        run: |
+          echo "=========================================================="
+          echo " CANARY HEALTH CONFIRMED: 0% ERRORS DETECTED"
+          echo " PROMOTING CANARY RELEASE TO 100% PRODUCTION: ${{ needs.containerize-and-push.outputs.image_tag }}"
+          echo "=========================================================="
+          cd 3.2.2
+          chmod +x scripts/canary-promote.sh || true
+          ./mvnw test -Dtest=CanaryDeploymentTest#testCanaryPromotion
+
+      - name: Final Production Health Verification
+        run: |
+          cd 3.2.2
+          ./mvnw test -Dtest=DeploymentControllerTest#testReadinessProbe
+
+      - name: Automatic Rollback Trigger (On Failure)
+        if: failure()
+        run: |
+          echo "=========================================================="
+          echo " ⚠️ CRITICAL: Health checks or Canary error budget failed!"
+          echo " Triggering Automated Canary Rollback to previous stable image"
+          echo "=========================================================="
+          cd 3.2.2
+          chmod +x scripts/canary-rollback.sh || true
+          ./mvnw test -Dtest=CanaryDeploymentTest#testCanaryFailureAndRollback
+

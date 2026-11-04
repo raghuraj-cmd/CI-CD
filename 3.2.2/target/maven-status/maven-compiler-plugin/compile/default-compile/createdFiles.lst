@@ -1,0 +1,9 @@
+com\experiment\cd\model\CanaryStatus$CanaryStatusBuilder.class
+com\experiment\cd\model\DeploymentRelease$DeploymentReleaseBuilder.class
+com\experiment\cd\CdPipelineDemoApplication.class
+com\experiment\cd\model\CanaryStatus.class
+com\experiment\cd\health\DeploymentHealthIndicator.class
+com\experiment\cd\model\DeploymentRelease.class
+com\experiment\cd\controller\DeploymentController.class
+com\experiment\cd\service\CanaryService.class
+com\experiment\cd\controller\CanaryController.class

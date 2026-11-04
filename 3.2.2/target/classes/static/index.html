@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exp 3.2.2 - Continuous Deployment & Canary Release Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: #0b1120;
+      color: #f1f5f9;
+      min-height: 100vh;
+      padding: 2.5rem;
+    }
+    .header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 1.5rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-green { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .badge-red { background: #7f1d1d; color: #f87171; border: 1px solid #dc2626; }
+    .badge-blue { background: #1e3a8a; color: #60a5fa; border: 1px solid #2563eb; }
+    .badge-purple { background: #4c1d95; color: #c084fc; border: 1px solid #7c3aed; }
+    .badge-amber { background: #78350f; color: #fbbf24; border: 1px solid #d97706; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 1.5rem;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    h1 { color: #38bdf8; font-size: 1.8rem; margin-bottom: 0.5rem; }
+    h2 { color: #94a3b8; font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
+    .subtitle { color: #64748b; font-size: 0.95rem; }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #334155;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #94a3b8; font-size: 0.9rem; }
+    .stat-value { font-weight: 600; font-family: monospace; font-size: 0.95rem; }
+
+    .split-bar-container {
+      margin: 1.25rem 0;
+    }
+    .split-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+    .split-bar {
+      display: flex;
+      height: 18px;
+      border-radius: 9px;
+      overflow: hidden;
+      background: #334155;
+      border: 1px solid #475569;
+    }
+    .split-stable {
+      background: #2563eb;
+      height: 100%;
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+    .split-canary {
+      background: #f59e0b;
+      height: 100%;
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: bold;
+      color: #1e1e1e;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.85rem;
+    }
+    button:hover { background: #2563eb; transform: translateY(-1px); }
+    button.btn-danger { background: #ef4444; }
+    button.btn-danger:hover { background: #dc2626; }
+    button.btn-success { background: #10b981; }
+    button.btn-success:hover { background: #059669; }
+    button.btn-amber { background: #d97706; }
+    button.btn-amber:hover { background: #b45309; }
+    button.btn-secondary { background: #475569; }
+    button.btn-secondary:hover { background: #334155; }
+
+    pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      color: #38bdf8;
+      font-family: "Consolas", "Monaco", monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      max-height: 280px;
+    }
+    .links-bar {
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background: #1e293b;
+      border-radius: 8px;
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      align-items: center;
+      border: 1px solid #334155;
+    }
+    .links-bar a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+    .links-bar a:hover { text-decoration: underline; }
+
+    .traffic-pill-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin: 0.75rem 0;
+      max-height: 90px;
+      overflow-y: auto;
+      padding: 6px;
+      background: #0f172a;
+      border-radius: 6px;
+      border: 1px solid #334155;
+    }
+    .traffic-pill {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .pill-stable { background: #1e3a8a; color: #93c5fd; }
+    .pill-canary { background: #78350f; color: #fde68a; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h1>Experiment 3.2.2: Continuous Deployment & Canary Releases</h1>
+        <p class="subtitle">Multi-Stage Docker Containers, Traffic Splitting, Actuator Probes & Automated Rollbacks</p>
+      </div>
+      <div style="display: flex; gap: 0.5rem;">
+        <span id="badgeState" class="badge badge-amber">ACTIVE_CANARY</span>
+        <span id="badgeHealth" class="badge badge-green">HEALTHY (UP)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="links-bar">
+    <span style="color: #94a3b8; font-weight: 600;">Endpoints:</span>
+    <a href="/api/canary/status" target="_blank">/api/canary/status</a>
+    <a href="/api/canary/route" target="_blank">/api/canary/route</a>
+    <a href="/api/deployments/info" target="_blank">/api/deployments/info</a>
+    <a href="/api/deployments/smoke-test" target="_blank">/api/deployments/smoke-test</a>
+    <a href="/actuator/health" target="_blank">/actuator/health</a>
+  </div>
+
+  <div class="grid">
+    <!-- Card 1: Canary Deployment Status -->
+    <div class="card">
+      <h2>🐤 Canary Deployment Status</h2>
+
+      <div class="stat-row">
+        <span class="stat-label">Stable Release</span>
+        <span class="stat-value" id="valStableVer" style="color: #60a5fa;">1.0.0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Canary Release</span>
+        <span class="stat-value" id="valCanaryVer" style="color: #fbbf24;">2.0.0-canary</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Release Lifecycle State</span>
+        <span class="stat-value" id="valReleaseState">ACTIVE_CANARY</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Canary Error Rate</span>
+        <span class="stat-value" id="valErrorRate">0.0%</span>
+      </div>
+
+      <!-- Traffic Split Visualization -->
+      <div class="split-bar-container">
+        <div class="split-bar-label">
+          <span style="color: #60a5fa;">Stable: <span id="labelStableWeight">90%</span></span>
+          <span style="color: #fbbf24;">Canary: <span id="labelCanaryWeight">10%</span></span>
+        </div>
+        <div class="split-bar">
+          <div id="barStable" class="split-stable" style="width: 90%;">90%</div>
+          <div id="barCanary" class="split-canary" style="width: 10%;">10%</div>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">Total Requests Handled</span>
+        <span class="stat-value" id="valTotalReq">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Stable / Canary Distribution</span>
+        <span class="stat-value"><span id="valStableReq" style="color: #60a5fa;">0</span> / <span id="valCanaryReq" style="color: #fbbf24;">0</span></span>
+      </div>
+
+      <div class="btn-group">
+        <button onclick="fetchCanaryStatus()">Refresh Status</button>
+        <button class="btn-secondary" onclick="resetAllMetrics()">Reset Counters</button>
+      </div>
+    </div>
+
+    <!-- Card 2: Interactive Traffic Routing Simulator -->
+    <div class="card">
+      <h2>🚦 Live Traffic Routing Simulator</h2>
+      <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.75rem;">
+        Test how requests are routed based on configured weights or explicit <code>X-Canary</code> headers:
+      </p>
+
+      <div class="btn-group">
+        <button onclick="sendSingleRoute()">Route Single Request</button>
+        <button class="btn-amber" onclick="sendTargetedCanary()">Send with X-Canary: always</button>
+        <button class="btn-secondary" onclick="sendTargetedStable()">Send with X-Canary: never</button>
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <button class="btn-success" onclick="simulateBatch(20)" style="width: 100%;">
+          ⚡ Simulate 20 Concurrent User Requests
+        </button>
+      </div>
+
+      <div class="traffic-pill-box" id="trafficPillBox">
+        <span style="color: #64748b; font-size: 0.75rem; padding: 4px;">Click "Simulate 20 Concurrent User Requests" to see live distribution...</span>
+      </div>
+
+      <h3 style="margin-top: 0.75rem; font-size: 0.9rem; color: #cbd5e1;">Live Inspection Log</h3>
+      <pre id="outputLog">Ready for inspection.</pre>
+    </div>
+
+    <!-- Card 3: Canary Promotion & Auto-Rollback Controls -->
+    <div class="card">
+      <h2>⚙️ Canary Lifecycle & Release Automation</h2>
+      <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.75rem;">
+        Stepwise promotion, fault injection, and automated self-healing rollback:
+      </p>
+
+      <div style="margin-bottom: 0.75rem;">
+        <span class="stat-label" style="display: block; margin-bottom: 0.4rem;">Adjust Canary Weight:</span>
+        <div class="btn-group" style="margin-top: 0;">
+          <button onclick="setWeight(10)">10%</button>
+          <button onclick="setWeight(25)">25%</button>
+          <button onclick="setWeight(50)">50%</button>
+          <button onclick="setWeight(100)">100%</button>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 0.75rem; margin-top: 0.75rem;">
+        <span class="stat-label" style="display: block; margin-bottom: 0.4rem;">Canary Decision Gates:</span>
+        <div class="btn-group" style="margin-top: 0;">
+          <button class="btn-success" onclick="promoteCanary()">🌟 Promote Canary to 100% Stable</button>
+          <button class="btn-danger" onclick="rollbackCanary()">⚠️ Trigger Canary Rollback</button>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 0.75rem; margin-top: 0.75rem;">
+        <span class="stat-label" style="display: block; margin-bottom: 0.4rem;">Failure Simulation & Recovery:</span>
+        <div class="btn-group" style="margin-top: 0;">
+          <button class="btn-danger" onclick="injectCanaryFault()">Inject Canary Outage (500 Error)</button>
+          <button class="btn-secondary" onclick="recoverCanary()">Recover Canary Health</button>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 0.75rem; margin-top: 0.75rem;">
+        <span class="stat-label" style="display: block; margin-bottom: 0.4rem;">CD Pipeline Smoke Verification:</span>
+        <div class="btn-group" style="margin-top: 0;">
+          <button class="btn-secondary" onclick="runSmokeTest()">Run Smoke Test Endpoint</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchCanaryStatus() {
+      try {
+        const res = await fetch('/api/canary/status');
+        const data = await res.json();
+        
+        document.getElementById('valStableVer').textContent = data.stableVersion;
+        document.getElementById('valCanaryVer').textContent = data.canaryVersion;
+        document.getElementById('valReleaseState').textContent = data.releaseState;
+        document.getElementById('valErrorRate').textContent = data.canaryErrorRate + '%';
+        document.getElementById('valTotalReq').textContent = data.totalRequests;
+        document.getElementById('valStableReq').textContent = data.stableRequests;
+        document.getElementById('valCanaryReq').textContent = data.canaryRequests;
+
+        // Update weights & bars
+        const cWeight = data.canaryTrafficWeight;
+        const sWeight = data.stableTrafficWeight;
+        document.getElementById('labelCanaryWeight').textContent = cWeight + '%';
+        document.getElementById('labelStableWeight').textContent = sWeight + '%';
+        document.getElementById('barCanary').style.width = cWeight + '%';
+        document.getElementById('barCanary').textContent = cWeight > 5 ? cWeight + '%' : '';
+        document.getElementById('barStable').style.width = sWeight + '%';
+        document.getElementById('barStable').textContent = sWeight > 5 ? sWeight + '%' : '';
+
+        // Badges
+        const bState = document.getElementById('badgeState');
+        bState.textContent = data.releaseState;
+        if (data.releaseState === 'PROMOTED_TO_STABLE') {
+          bState.className = 'badge badge-green';
+        } else if (data.releaseState === 'ROLLED_BACK') {
+          bState.className = 'badge badge-red';
+        } else {
+          bState.className = 'badge badge-amber';
+        }
+
+        const bHealth = document.getElementById('badgeHealth');
+        if (data.canaryHealth === 'HEALTHY') {
+          bHealth.className = 'badge badge-green';
+          bHealth.textContent = 'CANARY HEALTHY (UP)';
+        } else {
+          bHealth.className = 'badge badge-red';
+          bHealth.textContent = 'CANARY DEGRADED (DOWN)';
+        }
+      } catch (e) {
+        console.error('Error fetching status:', e);
+      }
+    }
+
+    async function sendSingleRoute() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/route');
+        const data = await res.json();
+        log.textContent = `GET /api/canary/route -> [${res.status}]\n` + JSON.stringify(data, null, 2);
+        addTrafficPill(data.servedBy);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function sendTargetedCanary() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/route', {
+          headers: { 'X-Canary': 'always' }
+        });
+        const data = await res.json();
+        log.textContent = `GET /api/canary/route (X-Canary: always) -> [${res.status}]\n` + JSON.stringify(data, null, 2);
+        addTrafficPill(data.servedBy);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function sendTargetedStable() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/route', {
+          headers: { 'X-Canary': 'never' }
+        });
+        const data = await res.json();
+        log.textContent = `GET /api/canary/route (X-Canary: never) -> [${res.status}]\n` + JSON.stringify(data, null, 2);
+        addTrafficPill(data.servedBy);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function simulateBatch(count) {
+      const log = document.getElementById('outputLog');
+      log.textContent = `Simulating ${count} requests...`;
+      try {
+        const res = await fetch(`/api/canary/simulate-traffic?count=${count}`, { method: 'POST' });
+        const data = await res.json();
+        
+        const pillBox = document.getElementById('trafficPillBox');
+        pillBox.innerHTML = '';
+        (data.recentLogs || []).forEach(item => {
+          addTrafficPill(item.servedBy);
+        });
+
+        log.textContent = `⚡ Batch Simulation Results (${count} Requests):\n` +
+          `• Configured Canary Weight: ${data.configuredCanaryWeight}\n` +
+          `• Routed to Canary:         ${data.routedToCanary}\n` +
+          `• Routed to Stable:         ${data.routedToStable}\n` +
+          `• Actual Ratio Achieved:    ${data.canaryPercentageAchieved}\n`;
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error during batch simulation: ' + e;
+      }
+    }
+
+    function addTrafficPill(servedBy) {
+      const pillBox = document.getElementById('trafficPillBox');
+      const pill = document.createElement('span');
+      if (servedBy === 'CANARY') {
+        pill.className = 'traffic-pill pill-canary';
+        pill.textContent = 'CANARY';
+      } else {
+        pill.className = 'traffic-pill pill-stable';
+        pill.textContent = 'STABLE';
+      }
+      pillBox.appendChild(pill);
+    }
+
+    async function setWeight(weight) {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch(`/api/canary/set-weight?weight=${weight}`, { method: 'POST' });
+        const data = await res.json();
+        log.textContent = `Canary Weight updated to ${weight}%\n` + JSON.stringify(data, null, 2);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function promoteCanary() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/promote', { method: 'POST' });
+        const data = await res.json();
+        log.textContent = `🎉 CANARY PROMOTED TO 100% PRODUCTION STABLE!\n` + JSON.stringify(data, null, 2);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function rollbackCanary() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/rollback?reason=OperatorInitiatedRollback', { method: 'POST' });
+        const data = await res.json();
+        log.textContent = `⚠️ CANARY ROLLED BACK TO STABLE VERSION!\n` + JSON.stringify(data, null, 2);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function injectCanaryFault() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/simulate-failure?reason=HighErrorRateOnCanary', { method: 'POST' });
+        const data = await res.json();
+        log.textContent = `ALERT: Synthetic Fault Injected into Canary!\n` + JSON.stringify(data, null, 2) +
+          `\n\nRequests to Canary will now return HTTP 500 error, triggering the automated rollback gate.`;
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function recoverCanary() {
+      const log = document.getElementById('outputLog');
+      try {
+        const res = await fetch('/api/canary/recover', { method: 'POST' });
+        const data = await res.json();
+        log.textContent = `Canary Health Recovered.\n` + JSON.stringify(data, null, 2);
+        fetchCanaryStatus();
+      } catch (e) {
+        log.textContent = 'Error: ' + e;
+      }
+    }
+
+    async function resetAllMetrics() {
+      try {
+        await fetch('/api/canary/reset', { method: 'POST' });
+        document.getElementById('trafficPillBox').innerHTML = '<span style="color: #64748b; font-size: 0.75rem; padding: 4px;">Pills cleared.</span>';
+        fetchCanaryStatus();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function runSmokeTest() {
+      const log = document.getElementById('outputLog');
+      log.textContent = 'Executing GET /api/deployments/smoke-test...';
+      try {
+        const res = await fetch('/api/deployments/smoke-test');
+        const data = await res.json();
+        log.textContent = `Status: ${res.status} ${res.statusText}\n` + JSON.stringify(data, null, 2);
+      } catch (e) {
+        log.textContent = 'Error during smoke test: ' + e;
+      }
+    }
+
+    // Initial load
+    fetchCanaryStatus();
+  </script>
+</body>
+</html>
